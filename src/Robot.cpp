@@ -19,6 +19,7 @@ public:
 	bool   light,kickerswitcher;
 	bool   SparkUno,kickatpos;
 	bool   SparkDue;
+	double climbspeed;
 
 	Joystick *rightDrive =new Joystick(0,2,9);
 	Joystick *leftDrive  =new Joystick(1,2,9);
@@ -29,7 +30,7 @@ public:
 	Talon *bLeft         =new Talon(2);
 	Talon *bRight        =new Talon(3);
 	Spark *kicker             =new Spark(4);
-	Spark *B             =new Spark(5);
+	//Spark *B             =new Spark(5);
 
 	Encoder *encRight    =new Encoder(0,1);
 	Encoder *encLeft     =new Encoder(2,3);
@@ -161,7 +162,7 @@ public:
 
 
 //
-		if(kickerswitcher&&kickatpos){//if at pos and button
+		/*if(kickerswitcher&&kickatpos){//if at pos and button
 			kicker->Set(1);//move
 			encKicker->GetRaw();//read enc
 			if((encKicker->GetRaw())<=-15){//if at -15 deg call for reverse
@@ -177,9 +178,16 @@ public:
 		}
 		else{//else stop
 			kicker->Set(0);
+		}*/
+		climbspeed=gamePad->GetRawAxis(0);
+		if(abs(climbspeed)>=.5){
+			kicker->Set(climbspeed);
+		}
+		else{
+			kicker->Set(0);
 		}
 //
-
+		SmartDashboard::PutNumber("axis",climbspeed);
 		SmartDashboard::PutNumber("encRight",encRight->GetRaw());
 		SmartDashboard::PutNumber("encLeft",encLeft->GetRaw());
 
