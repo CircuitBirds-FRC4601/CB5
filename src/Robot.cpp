@@ -23,7 +23,7 @@ public:
 	bool   kickerdown,kickerup,kickerEreset;
 	bool   kickerdummy,kickerrunning;
 	bool   greenholder, superdum, stop_arm1, state,frank;
-	double extra, scale;
+	double extra, scale, turnback, disable_DrC;
 	double count=0;
 
 	Joystick *rightDrive =new Joystick(0,2,9);
@@ -122,6 +122,8 @@ public:
 		Rightgo=0;
 		Leftgo=0;
 		scale = .3/20;
+		turnback = 1.0;
+		disable_DrC=0.0;
 	}
 
 	//AUTO START
@@ -130,6 +132,7 @@ public:
 		Rdis=encRight->GetRaw();
 		Ldis=encLeft->GetRaw();
 		extra = (Ldis-Rdis)*scale;
+		bumper=bumperHit->Get();
 		//GLOBAL GEAR
 		if(gearDrop){//call gearDrop to drop gear
 
@@ -195,7 +198,7 @@ public:
 				max_intensity_cutoff = 38;           // saturation light value on pixels
 				bias = 0.35*255*stripe_width/num_columns; // A bias to weight the max and min positions
 				targetCenter = 320;
-
+				kdiff = 1.0/320.0;
 				//Intensity Catch
 				for(ii=2; ii<num_columns; ii++){//gets x values
 					integral[ii] = 0; //initilize as zero
@@ -374,9 +377,26 @@ public:
 			}
 			if(!gearDrop&&leg0==1&&leg1==0){      // LEG 1: then turn, 13.22 inches (60 degrees) to normal to face of airship wall
 				angleend = gyro->GetAngle();
-				if ((abs(angleend-anglestart-turnside*60)< 8)&&(abs(Rdis)<60*calibrator)&&){  // this is the angular tolerance to get you within 8 degrees of normal to the gear pin.
-					Rightgo=+.25*turnside;
-					Leftgo=-.25*turnside;
+				if ( ((((int)(angleend-anglestart-turnside*60) & 360)>2)||(((int)(angleend-anglestart-turnside*60) % 360)<360-2))&&(abs(Rdis)<60*calibrator)&&(fabs(1.0-fabs(extra)/scale/13.22/calibrator)>.03)) {// this is the angular tolerance to get you within 2-3 degrees of normal to the gear pin.
+					if (1.0-fabs(extra)/scale/13.22/calibrator<0) {     // Only if both are beyond the target, turn in the opposite direction!
+						turnback = -1.0;
+					}
+					else{
+						turnback = 1.0;
+					}
+					visionOn=1;                                // turn on vision capture.
+					if(!bumper&&validView){					   //here decide the angle to drive
+						P_differential = kdiff*(targetCenter-centerField);
+						visionOn=0;                            // turn the vision off.
+						validView=0;
+						turnback = 1.0;                        // if have a valid view, drive with the camera
+						turnside = 1.0;
+						}
+						else{
+						P_differential = 1.0;                  // else drive with the turnside/turnback combo only.
+						}
+			        Rightgo=+.25*turnside*turnback*P_differential;
+					Leftgo=-.25*turnside*turnback*P_differential;
 				}
 				else {
 					Rightgo= 0.0;
@@ -388,17 +408,6 @@ public:
 				}
 			}
 			if(!gearDrop&&leg0==1&&leg1==1&&leg2==0){      // LEG 2: then crawl onto the peg, with the robot vision.
-				visionOn=1;                                // turn on vision capture.
-				bumper=bumperHit->Get();
-				if(!bumper&&validView){					   //here decide the angle to drive
-					P_differential = kdiff*(targetCenter-centerField);
-					visionOn=0;                            // turn the vision off.
-					timesThrough++;
-					validView=0;
-				}
-				else{
-					P_differential = 0;
-				}
 				if(Rdis<=29.22/3.0*timesThrough*calibrator&&Ldis<=29.22/3.0*timesThrough*calibrator&&!bumper){
 					Rightgo=fabs(.75+extra);
 					Leftgo =fabs(.75-extra);
@@ -409,7 +418,6 @@ public:
 					leg2=1;
 					encRight->Reset();
 					encLeft->Reset();
-					visionOn=1;
 				}
 				if(bumper||(timesThrough==4)){
 					leg0=1;
