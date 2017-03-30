@@ -14,17 +14,30 @@
 
 class Robot: public frc::IterativeRobot {
 public:
-	int ii, jj, stripe_width, num_rows, num_columns, stripe_start_row, diff_int[641], integral[641], timesThrough;
-	int max_integral,maxposn1,maxposn2, min_integral,minposn1,minposn2, tempi, cutoff_intensity, flagi, done_int, targetCenter;
-	int arm_max=355, arm_set_up=70, arm_set_down=346, byte, max_intensity_cutoff, max_cutoff_picture, leg0, leg1, leg2, turnside;
-	double Leftgo,Rightgo,Rdis,Ldis, bias, tempf, centerField, Bobby, BobbyB, targetShotSpeed, kp, kint, speedNow, error, errorInt, percentI,prevspeed=1,currentspeed=1;
-	bool   gearDrop,backUp, bumper, visionOn, validView;
-	double climbspeed,shotspeed,push, heading, headinglast, calibrator=883.95/12.0, anglestart, angleend, kdiff, P_differential;
-	bool   kickerdown,kickerup,kickerEreset;
-	bool   kickerdummy,kickerrunning;
-	bool   greenholder, superdum, stop_arm1, state,frank;
-	double extra, scale, turnback, disable_DrC;
-	double count=0;
+	int    ii, jj, stripe_width, num_rows, num_columns, stripe_start_row, diff_int[641], integral[641], timesThrough;					// Vision
+	int    max_integral, maxposn1, maxposn2, min_integral, minposn1, minposn2, tempi, cutoff_intensity, flagi, done_int, targetCenter;	//
+	int    max_intensity_cutoff, max_cutoff_picture;																					//
+	double bias, tempf, centerField, kdiff;																								//
+	double extra, scale, turnback;																										//
+	bool   greenholder, validView;																										//
+
+	bool   leg0, leg1, leg2;																											// Auto
+	bool   gearDrop, backUp, bumper, visionOn;																							//
+	double anglestart, angleend, P_differential;																						//
+	int    turnside;																													//
+
+	int    arm_max=355, arm_set_up=70, arm_set_down=346;																				// Gear
+	bool   kickerdown, kickerup, kickerEreset;																							//
+	bool   kickerdummy, kickerrunning, stop_arm1;																						//
+
+	double targetShotSpeed, kp, kint, speedNow, error, errorInt, percentI,shotspeed;													//Shooter
+	bool   Bobby, BobbyB;																												//
+
+	double climbspeed, heading, calibrator=883.95/12.0/*ticks per foot*/;																// Movement
+	double Leftgo, Rightgo, Rdis, Ldis;																									//
+
+	bool   superdum,lightdum=1, disable_DrC=1;																							// Misc.
+	double count=0;																														//
 
 	Joystick *rightDrive =new Joystick(0,2,9);
 	Joystick *leftDrive  =new Joystick(1,2,9);
@@ -39,6 +52,7 @@ public:
 	Spark *frankenspark  =new Spark(6);
 	Spark *shooter		 =new Spark(7);
 	Spark *feeder		 =new Spark(8);
+
 	Encoder *encRight    =new Encoder(0,1);
 	Encoder *encLeft     =new Encoder(2,3);
 	Encoder *encKicker	 =new Encoder(4,5);
@@ -85,6 +99,19 @@ public:
 		encLeft->Reset();
 		gyro->Calibrate();
 		Light->EnablePWM(0);
+		while(!IsAutonomous()&&!IsOperatorControl()){
+			Light->UpdateDutyCycle(count/50);
+
+			if(!lightdum){
+				count++;
+			}
+			else{
+				count--;
+			}
+			if(count>=50||count<=0){
+				lightdum=!lightdum;
+			}
+		}
 	}
 
 	/*
@@ -101,17 +128,17 @@ public:
 
 	void AutonomousInit() override {
 		autoSelected = chooser.GetSelected();
+		disable_DrC=frc::SmartDashboard::GetBoolean("Dr. C Kill Switch",1);
 		std::cout << "Auto selected: " << autoSelected << std::endl;
 		stop_arm1=limitArm->Get();
 		while(!stop_arm1&&!IsOperatorControl()){
 			stop_arm1=limitArm->Get();
-			kicker->Set(.25);
+			kicker->Set(.1);
 		}
 		kicker->Set(0);
 		encKicker->Reset();
 
 		greenholder=0;
-		push=0;
 		gearDrop=0;
 		kickerdummy=0;
 		backUp=0;
@@ -123,7 +150,6 @@ public:
 		Leftgo=0;
 		scale = .3/20;
 		turnback = 1.0;
-		disable_DrC=0.0;
 	}
 
 	//AUTO START
@@ -201,11 +227,11 @@ public:
 				kdiff = 1.0/320.0;
 				//Intensity Catch
 				for(ii=2; ii<num_columns; ii++){//gets x values
-					integral[ii] = 0; //initilize as zero
+					integral[ii] = 0; //Initialize as zero
 
 					for(jj=stripe_start_row; jj<stripe_start_row+stripe_width; jj++){//Gets y values
 						tempi = (int)((planes[1]).at<uchar>(jj,ii));//grabs intensity values
-						if (tempi>max_intensity_cutoff){//Regulate the pixel intensitys
+						if (tempi>max_intensity_cutoff){//Regulate the pixel intensities
 							tempi = 255;
 						}
 						integral[ii] = integral[ii]+tempi;//adds all of the pixels in the columns
@@ -350,92 +376,93 @@ public:
 			}
 		}
 		//DOA end
+		if(!disable_DrC){//Dr. C Kill switch
+			// HOOK
+			if ((autoSelected == righthook)||(autoSelected == lefthook)) {
 
-		// HOOK
-		else if ((autoSelected == righthook)||(autoSelected == lefthook)) {
-
-			// HOOK SELECTION
-			// go forward 88.09 inches, turn 60 degrees and then go 29.22 inches.
-			if (autoSelected == lefthook) {
-				turnside = -1;
-			}
-
-			else if (autoSelected == righthook) { // Fixed so the Auto does not fall through
-				turnside = 1;
-			}
-			//HOOK SELECTION
-            // LEG 0
-			if(!gearDrop&&Rdis<=88.09*calibrator&&Ldis<=88.09*calibrator&&leg0==0){
-				Rightgo=fabs(.75+extra);
-				Leftgo =fabs(.75-extra);
-			}
-			else{
-				leg0=1;                               // END OF LEG 0: signal you are done with first straightaway.
-				encRight->Reset();
-				encLeft->Reset();
-				anglestart = gyro->GetAngle();
-			}
-			if(!gearDrop&&leg0==1&&leg1==0){      // LEG 1: then turn, 13.22 inches (60 degrees) to normal to face of airship wall
-				angleend = gyro->GetAngle();
-				if ( ((((int)(angleend-anglestart-turnside*60) & 360)>2)||(((int)(angleend-anglestart-turnside*60) % 360)<360-2))&&(abs(Rdis)<60*calibrator)&&(fabs(1.0-fabs(extra)/scale/13.22/calibrator)>.03)) {// this is the angular tolerance to get you within 2-3 degrees of normal to the gear pin.
-					if (1.0-fabs(extra)/scale/13.22/calibrator<0) {     // Only if both are beyond the target, turn in the opposite direction!
-						turnback = -1.0;
-					}
-					else{
-						turnback = 1.0;
-					}
-					visionOn=1;                                // turn on vision capture.
-					if(!bumper&&validView){					   //here decide the angle to drive
-						P_differential = kdiff*(targetCenter-centerField);
-						visionOn=0;                            // turn the vision off.
-						validView=0;
-						turnback = 1.0;                        // if have a valid view, drive with the camera
-						turnside = 1.0;
-						}
-						else{
-						P_differential = 1.0;                  // else drive with the turnside/turnback combo only.
-						}
-			        Rightgo=+.25*turnside*turnback*P_differential;
-					Leftgo=-.25*turnside*turnback*P_differential;
+				// HOOK SELECTION
+				// go forward 88.09 inches, turn 60 degrees and then go 29.22 inches.
+				if (autoSelected == lefthook) {
+					turnside = -1;
 				}
-				else {
-					Rightgo= 0.0;
-					Leftgo = 0.0;
-					leg1=1;
-					encRight->Reset();
-					encLeft->Reset();
-					timesThrough=1;
+
+				else if (autoSelected == righthook) { // Fixed so the Auto does not fall through
+					turnside = 1;
 				}
-			}
-			if(!gearDrop&&leg0==1&&leg1==1&&leg2==0){      // LEG 2: then crawl onto the peg, with the robot vision.
-				if(Rdis<=29.22/3.0*timesThrough*calibrator&&Ldis<=29.22/3.0*timesThrough*calibrator&&!bumper){
+				//HOOK SELECTION
+				// LEG 0
+				if(!gearDrop&&Rdis<=88.09*calibrator&&Ldis<=88.09*calibrator&&leg0==0){
 					Rightgo=fabs(.75+extra);
 					Leftgo =fabs(.75-extra);
 				}
 				else{
-					Rightgo= 0.0;
-					Leftgo = 0.0;
-					leg2=1;
+					leg0=1;                               // END OF LEG 0: signal you are done with first straightaway.
 					encRight->Reset();
 					encLeft->Reset();
+					anglestart = gyro->GetAngle();
 				}
-				if(bumper||(timesThrough==4)){
-					leg0=1;
-					leg1=1;
-					leg2=1;
-					Rightgo= 0.0;
-					Leftgo = 0.0;
-					encRight->Reset();
-					encLeft->Reset();
-					gearDrop=1;
-					visionOn=0;
+				if(!gearDrop&&leg0==1&&leg1==0){      // LEG 1: then turn, 13.22 inches (60 degrees) to normal to face of airship wall
+					angleend = gyro->GetAngle();
+					if ( ((((int)(angleend-anglestart-turnside*60) % 360)>2)||(((int)(angleend-anglestart-turnside*60) % 360)<360-2))&&(abs(Rdis)<60*calibrator)&&(fabs(1.0-fabs(extra)/scale/13.22/calibrator)>.03)) {// this is the angular tolerance to get you within 2-3 degrees of normal to the gear pin.
+						if (1.0-fabs(extra)/scale/13.22/calibrator<0) {     // Only if both are beyond the target, turn in the opposite direction!
+							turnback = -1.0;
+						}
+						else{
+							turnback = 1.0;
+						}
+						visionOn=1;                                // turn on vision capture.
+						if(!bumper&&validView){					   //here decide the angle to drive
+							P_differential = kdiff*(targetCenter-centerField);
+							visionOn=0;                            // turn the vision off.
+							validView=0;
+							turnback = 1.0;                        // if have a valid view, drive with the camera
+							turnside = 1.0;
+						}
+						else{
+							P_differential = 1.0;                  // else drive with the turnside/turnback combo only.
+						}
+						Rightgo=+.25*turnside*turnback*P_differential;
+						Leftgo=-.25*turnside*turnback*P_differential;
+					}
+					else {
+						Rightgo= 0.0;
+						Leftgo = 0.0;
+						leg1=1;
+						encRight->Reset();
+						encLeft->Reset();
+						timesThrough=1;
+					}
+				}
+				if(!gearDrop&&leg0==1&&leg1==1&&leg2==0){      // LEG 2: then crawl onto the peg, with the robot vision.
+					if(Rdis<=29.22/3.0*timesThrough*calibrator&&Ldis<=29.22/3.0*timesThrough*calibrator&&!bumper){
+						Rightgo=fabs(.75+extra);
+						Leftgo =fabs(.75-extra);
+					}
+					else{
+						Rightgo= 0.0;
+						Leftgo = 0.0;
+						leg2=1;
+						encRight->Reset();
+						encLeft->Reset();
+					}
+					if(bumper||(timesThrough==4)){
+						leg0=1;
+						leg1=1;
+						leg2=1;
+						Rightgo= 0.0;
+						Leftgo = 0.0;
+						encRight->Reset();
+						encLeft->Reset();
+						gearDrop=1;
+						visionOn=0;
+					}
 				}
 			}
-		}
-		//HOOK end
+			//HOOK end
+		}//Dr. C Kill switch
 
 		//NOTHING
-		else if (autoSelected == NOTHING) {//sit there yah lazy bum
+		if (autoSelected == NOTHING) {//sit there yah lazy bum
 			Leftgo=0;
 			Rightgo=0;
 		}
@@ -453,7 +480,7 @@ public:
 		Rightgo     =0;
 		encRight->Reset();
 		encLeft->Reset();
-		targetShotSpeed = 3;   //actual 6.8           // target for the shooter wheel speed
+		targetShotSpeed = 6.8;          // target for the shooter wheel speed
 		kp = 0;//.4/10000;                               // proportional gain for the PID loop for shooter wheel
 		kint = 0;//1.7/10000;						     // integral gain for PID loop         for shooter wheel
 		percentI = .84;  							 // integrating time-to-forget
@@ -463,7 +490,6 @@ public:
 		//Video Practice
 		superdum=gamePad->GetRawButton(7);
 		greenholder=0;
-		push=0;
 		while(superdum){
 			if(!greenholder){
 				autosinker.GrabFrame(pregreen);//grabs a pregreen image
@@ -618,6 +644,7 @@ public:
 				SmartDashboard::PutNumber("camera second stripe inner edge", maxposn2);
 				SmartDashboard::PutNumber("Camera second stripe outer edge", minposn2);
 				SmartDashboard::PutBoolean("Valid", validView);
+				SmartDashboard::PutNumber("Center of Field",centerField);
 				rectangle(planes[1], cv::Point(maxposn1, 120), cv::Point(minposn1, 160),cv::Scalar(255, 255, 255), 5);//first stripe
 				rectangle(planes[1], cv::Point(maxposn2, 120), cv::Point(minposn2, 160),cv::Scalar(255, 0, 0), 2);//second stripe
 				rectangle(planes[1], cv::Point((maxposn1+minposn1)/2, 128), cv::Point((maxposn2+minposn2)/2, 132),cv::Scalar(255, 0, 0), 6);//second stripe
@@ -625,8 +652,8 @@ public:
 				superdum=0;
 			}
 		}
-
 		//Video Practice
+
 		if(gamePad->GetRawButton(3)){
 
 			frankenspark->Set(-1);
@@ -711,21 +738,20 @@ public:
 		SmartDashboard::PutNumber("error",error);
 		SmartDashboard::PutNumber("Speed Now!!!",speedNow);
 		SmartDashboard::PutNumber("Polyphemous is a wimp!",encShooter->GetRaw());
-		/*
-		if(fabs(speedNow/targetShotSpeed)<=1.2&&fabs(speedNow/targetShotSpeed)>=.8){
+		if(fabs(speedNow/(targetShotSpeed*1000))<=1.2&&fabs(speedNow/(targetShotSpeed*1000))>=.8){
 			gamePad->SetRumble(Joystick::RumbleType::kRightRumble,1);
 			gamePad->SetRumble(Joystick::RumbleType::kLeftRumble,1);
 		}
 		else{
 			gamePad->SetRumble(Joystick::RumbleType::kRightRumble,0);
 			gamePad->SetRumble(Joystick::RumbleType::kLeftRumble,0);
-		}*/
+		}
 		//Shooter
 
 		// Bobby
 		Bobby  = gamePad -> GetRawButton(5);
 		BobbyB = gamePad -> GetRawButton(6);
-		if((Bobby==1)&&(fabs(speedNow/1000/targetShotSpeed-1)<=.1)){
+		if((Bobby==1)&&(fabs(speedNow/(targetShotSpeed*1000)-1)<=.1)){
 			feeder->Set(1);
 		}
 		else if (BobbyB==1){
@@ -747,21 +773,16 @@ public:
 		//Climber
 
 		heading = gyro->GetAngle();
-		
-		if(gamePad->GetRawButton(8)==1){
-			Light->UpdateDutyCycle(count/10);
-		}
-		else{
-			Light->UpdateDutyCycle(0);
-		}
-		if(!frank){
-		count++;
+
+		Light->UpdateDutyCycle(count/50);
+		if(!lightdum){
+			count++;
 		}
 		else{
 			count--;
 		}
-		if(count>=10){
-			count=0;
+		if(count>=50||count<=0){
+			lightdum=!lightdum;
 		}
 		//SmartDashboard
 		SmartDashboard::PutNumber("Heading", heading);
@@ -821,6 +842,7 @@ START_ROBOT_CLASS(Robot)
  *  	7   B  "		(Yellow Wire)
  *  	8   Limit Switch (kicker arm) for the encoder calibration (registration mark)
  *  	9   Bumper Contact switch
+ *  	10	Under-glow (pins 11 and 12 in mxp port)
  *
  *
  *  	Analog
